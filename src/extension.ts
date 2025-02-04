@@ -133,7 +133,7 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					<!-- Main Content Section -->
 					<main>
 						<h1>What can I help you refactor today?</h1>
-						<p class="subtitle">Create new code, add features, or fix issues—let's make it happen.</p>
+						<p class="subtitle">Build new, update existing, or fix bugs—always to your help.</p>
 
 						<div class="input-container">
 							<div class="textarea-wrapper">
