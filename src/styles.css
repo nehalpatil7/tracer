@@ -107,11 +107,6 @@ h1 {
     width: 100%;
 }
 
-.textarea-wrapper {
-    position: relative;
-    margin-bottom: 1rem;
-}
-
 textarea {
     width: 100%;
     min-height: 120px;
@@ -140,8 +135,8 @@ textarea:focus {
 
 .fab {
     position: absolute;
-    left: 0.5rem;
-    bottom: 0.8rem;
+    left: 0rem;
+    bottom: 0rem;
     width: 1.5rem;
     height: 1.5rem;
     background-color: #374151;
@@ -186,16 +181,38 @@ textarea:focus-visible {
     outline-offset: 2px;
 }
 
-/* Dropdown styles */
+.textarea-wrapper {
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+.attachment-container {
+    position: absolute;
+    left: 0.5rem;
+    bottom: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.attachment-search {
+    box-sizing: border-box;
+    border: 1px solid #374151;
+    border-radius: 0.2rem;
+    padding: 0.4rem;
+    background-color: rgb(32, 32, 32);
+    color: #fff;
+}
+
 .dropdown {
     position: absolute;
     top: 100%;
     left: 0;
-    width: 100%;
+    /* width: 90%; */
     background-color: rgb(32, 32, 32);
     border: 1px solid #374151;
     border-radius: 0.5rem;
-    max-height: 200px;
+    max-height: 300px;
     overflow-y: auto;
     z-index: 1000;
     margin-top: 0.5rem;
@@ -207,11 +224,16 @@ textarea:focus-visible {
     padding: 0.75rem 1rem;
     cursor: pointer;
     color: #fff;
-    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
 }
 
 .dropdown-item:hover {
     background-color: #374151;
+}
+
+.language-icon {
+    margin-right: 0.5rem;
 }
 
 /* History view styles */

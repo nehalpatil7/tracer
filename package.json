@@ -37,6 +37,11 @@
           "name": "Task Planner"
         }
       ]
+    },
+    "webview": {
+      "localResourceRoots": [
+        "${extensionPath}/resources"
+      ]
     }
   },
   "scripts": {

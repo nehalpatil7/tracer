@@ -1,5 +1,16 @@
 // The module 'vscode' referenced with the alias vscode contains the VS Code extensibility API
 import * as vscode from 'vscode';
+import * as path from 'path';
+
+
+export async function getAllFiles(): Promise<{ path: string; name: string }[]> {
+	// glob '**/*' matches all files in workspace | exclude pattern '**/xxxx/**'
+	const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
+	return files.map(file => ({
+		path: file.fsPath,
+		name: path.basename(file.fsPath)
+	}));
+}
 
 
 export function activate(context: vscode.ExtensionContext) {
@@ -16,6 +27,15 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.commands.executeCommand("workbench.view.tracerSidebar");
 		})
 	);
+
+	// Command to trigger getAllFiles and show a message with the count of found files.
+	context.subscriptions.push(
+		vscode.commands.registerCommand('tracer.listAllFiles', async () => {
+			const files = await getAllFiles();
+			vscode.window.showInformationMessage(`Found ${files.length} files found`);
+		})
+	);
+
 	console.log('Congratulations, your extension "tracer" is now active!');
 }
 
@@ -67,22 +87,19 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					});
 					break;
 
-				case "getOpenFiles":
-					const openFiles = vscode.window.visibleTextEditors.map(editor => ({
-						path: editor.document.uri.fsPath,
-						name: editor.document.fileName.split('/').pop()
-					}));
+				case "getAllFiles":
+					const allFiles = await getAllFiles();
 					if (this._view) {
 						this._view.webview.postMessage({
 							command: 'updateOpenFiles',
-							files: openFiles
+							files: allFiles
 						});
 					}
 					break;
 
 				case "selectAttachment":
-					if (message.filePath) {
-						vscode.window.showInformationMessage(`Selected file: ${message.filePath}`);
+					if (message.fileName) {
+						vscode.window.showInformationMessage(`File attached: ${message.fileName}`);
 					}
 					break;
 			}
@@ -138,9 +155,12 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 						<div class="input-container">
 							<div class="textarea-wrapper">
 								<textarea id="queryInput" placeholder="Query here (@mention to attach files)" rows="4"></textarea>
-								<button class="fab" id="attachButton" aria-label="Add attachment">+</button>
+								<div id="attachmentContainer" class="attachment-container">
+									<button class="fab" id="attachButton" aria-label="Add attachment">+</button>
+									<input type="text" id="attachmentSearch" class="attachment-search hidden" placeholder="Search files or folders">
+									<div id="attachmentDropdown" class="dropdown hidden"></div>
+								</div>
 							</div>
-							<div id="attachmentDropdown" class="dropdown hidden"></div>
 							<button class="submit-button" id="submitButton">Generate Plan</button>
 						</div>
 					</main>
