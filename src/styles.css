@@ -1,0 +1,258 @@
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #fff;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+.container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    min-width: 70px;
+}
+
+/* Header styles */
+header {
+    padding: 1rem;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0.5rem;
+    position: relative;
+}
+
+.history-label {
+    font-size: 0.875rem;
+    color: #9CA3AF;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.icon {
+    width: 16px;
+    height: 16px;
+    color: #9CA3AF;
+}
+
+.icon-button {
+    background: none;
+    border: none;
+    color: #9CA3AF;
+    font-size: 1.25rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s;
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.icon-button:hover {
+    background-color: #1F2937;
+}
+
+.divider {
+    height: 1px;
+    background-color: #1F2937;
+    margin: 1rem 0.5rem;
+}
+
+/* Main content styles */
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    max-width: 42rem;
+    margin: 0 auto;
+    width: 100%;
+}
+
+h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    overflow-wrap: keep-all;
+    word-wrap: keep-all;
+}
+
+.subtitle {
+    font-size: 0.875rem;
+    color: #9CA3AF;
+    text-align: center;
+    margin-bottom: 2rem;
+    overflow-wrap: keep-all;
+    word-wrap: keep-all;
+}
+
+.input-container {
+    width: 100%;
+}
+
+.textarea-wrapper {
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+textarea {
+    width: 100%;
+    min-height: 120px;
+    background-color: rgb(32, 32, 32);
+    border: none;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    padding-right: 3rem;
+    color: #fff;
+    font-size: 1rem;
+    resize: none;
+    font-family: inherit;
+}
+
+textarea::placeholder {
+    color: #6B7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #3B82F6;
+}
+
+.fab {
+    position: absolute;
+    left: 0.5rem;
+    bottom: 0.8rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    background-color: #374151;
+    border: none;
+    border-radius: 0.5rem;
+    color: #fff;
+    font-size: 1.25rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.fab:hover {
+    background-color: #4B5563;
+}
+
+.submit-button {
+    width: 100%;
+    background-color: #2563EB;
+    color: #fff;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: normal;
+    word-wrap: keep-all;
+}
+
+.submit-button:hover {
+    background-color: #1D4ED8;
+}
+
+/* Focus styles for accessibility */
+button:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid #3B82F6;
+    outline-offset: 2px;
+}
+
+/* Dropdown styles */
+.dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background-color: rgb(32, 32, 32);
+    border: 1px solid #374151;
+    border-radius: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin-top: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition: opacity 0.2s ease-in-out;
+}
+
+.dropdown-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    color: #fff;
+    transition: background-color 0.2s;
+}
+
+.dropdown-item:hover {
+    background-color: #374151;
+}
+
+/* History view styles */
+.history-view {
+    background-color: rgb(32, 32, 32);
+    border: 1px solid #374151;
+    border-radius: 0.5rem;
+    margin: 1rem 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.history-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #374151;
+    cursor: pointer;
+    color: #9CA3AF;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.history-item:last-child {
+    border-bottom: none;
+}
+
+.history-item:hover {
+    background-color: #374151;
+    color: #fff;
+}
+
+/* Hidden class */
+.hidden {
+    display: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    main {
+        padding: 1rem;
+    }
+
+    h1 {
+        font-size: 1.25rem;
+    }
+}
