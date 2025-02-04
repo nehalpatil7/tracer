@@ -3,8 +3,7 @@
 ## Project Overview
 This project is an AI-powered Copilot for Code Planning and Generation, developed as part of the Traycer AI interview. It features general query support, personalized code modification plans and history of all your modifications.
 
-![Dashboard Screenshot - White](ai-cs-white.png)
-![Dashboard Screenshot - Black](ai-cs-black.png)
+![Home](demo.png)
 
 ## 🌟 Features
 - Personal Plan/Code Copilot
