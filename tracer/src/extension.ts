@@ -1,6 +1,7 @@
 // The module 'vscode' referenced with the alias vscode contains the VS Code extensibility API
 import * as vscode from 'vscode';
 import * as path from 'path';
+import axios from 'axios';
 
 
 export async function getAllFiles(): Promise<{ path: string; name: string }[]> {
@@ -30,10 +31,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Command to trigger getAllFiles and show a message with the count of found files.
 	context.subscriptions.push(
-		vscode.commands.registerCommand('tracer.listAllFiles', async () => {
+		vscode.commands.registerCommand('tracer.listAllFiles', async function (this: TracerSidebarView) {
 			const files = await getAllFiles();
-			vscode.window.showInformationMessage(`Found ${files.length} files found`);
-		})
+			vscode.window.showInformationMessage(`Found ${files.length} files`);
+		}.bind(provider))
 	);
 
 	console.log('Congratulations, your extension "tracer" is now active!');
@@ -54,20 +55,24 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 			localResourceRoots: [this.extensionUri]
 		};
 
+		const iconBaseUri = webviewView.webview.asWebviewUri(
+			vscode.Uri.joinPath(this.extensionUri, 'resources', 'icons')
+		);
+
 		// Load HTML content
-		webviewView.webview.html = this.getHtmlContent();
+		webviewView.webview.html = this.getHtmlContent(iconBaseUri.toString());
 
 		// Handle messages from Webview
 		webviewView.webview.onDidReceiveMessage(async (message) => {
 			switch (message.command) {
 				case "submitQuery":
 					// Process the query
-					vscode.window.showInformationMessage(`Processing query: ${message.text}`);
+					console.log(message.text);
 					this.processQuery(message.text);
 
 					// Update history
 					const queryHistory = this.context.globalState.get<string[]>('queryHistory', []);
-					queryHistory.unshift(message.text); // Add new query at the beginning
+					queryHistory.unshift(message.text);
 					await this.context.globalState.update('queryHistory', queryHistory);
 
 					// Send updated history back to webview
@@ -88,11 +93,21 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					break;
 
 				case "getAllFiles":
+					if (this._view) {
+						this._view.webview.postMessage({
+							command: 'updateProgress',
+							progress: 50
+						});
+					}
 					const allFiles = await getAllFiles();
 					if (this._view) {
 						this._view.webview.postMessage({
 							command: 'updateOpenFiles',
 							files: allFiles
+						});
+						this._view.webview.postMessage({
+							command: 'updateProgress',
+							progress: 100
 						});
 					}
 					break;
@@ -106,12 +121,23 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 		});
 	}
 
-	private processQuery(query: string) {
-		// Placeholder function - this will later send the query to an AI model or another backend service
+	private async processQuery(query: string) {
+		console.log("processQuery called with:", query);
 		vscode.window.showInformationMessage(`Received query: ${query}`);
+		try {
+			console.log('Making backend call', query);
+			const response = await axios.post('http://localhost:5001/new_chat', { userPrompt: query });
+			vscode.window.showInformationMessage(`Received resp: ${response.status}`);
+
+			const resultData = response.data;
+			this._view?.webview.postMessage({ command: 'planResponse', data: resultData });
+
+		} catch (error: any) {
+			vscode.window.showErrorMessage(`Backend call failed: ${error.message}`);
+		}
 	}
 
-	private getHtmlContent(): string {
+	private getHtmlContent(iconBase: string): string {
 		const cssUri = this._view?.webview.asWebviewUri(
 			vscode.Uri.joinPath(this.extensionUri, 'src', 'styles.css')
 		);
@@ -125,8 +151,9 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 
 			<head>
 				<meta charset="UTF-8">
+				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this._view?.webview.cspSource}; script-src 'unsafe-inline' ${this._view?.webview.cspSource}; img-src ${this._view?.webview.cspSource} data:;">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
-				<title>Traycer 2.0</title>
+				<title>Tracer 2.0</title>
 				<link rel="stylesheet" type="text/css" href="${cssUri}">
 			</head>
 
@@ -136,6 +163,11 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					<header>
 						<div class="header-content">
 							<span class="history-label">History</span>
+							<button class="icon-button" id="newChat">
+								<svg class="w-5 h-5 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-7 7V5"/>
+								</svg>
+							</button>
 							<button class="icon-button" id="historyIcon" aria-label="Clock">
 								<svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 									<circle cx="12" cy="12" r="10"/>
@@ -164,14 +196,59 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 							<button class="submit-button" id="submitButton">Generate Plan</button>
 						</div>
 					</main>
+
+					<!-- Planning output -->
+					<div class="tab-container" style="display: none;">
+						<div class="tabs">
+							<div class="tab active" data-tab="user-query">
+								<span class="check-icon">✓</span>
+								<span class="tab-title">User Query</span>
+								<span class="expand-icon">></span>
+							</div>
+							<div class="tab" data-tab="plan-specs">
+								<span class="check-icon">✓</span>
+								<span class="tab-title">Plan Specification</span>
+								<span class="expand-icon">></span>
+							</div>
+							<div class="tab" data-tab="code">
+								<span class="check-icon">✓</span>
+								<span class="tab-title">Code</span>
+								<span class="expand-icon">></span>
+							</div>
+						</div>
+
+						<div class="tab-content active" id="user-query">
+							<div class="query-text"></div>
+						</div>
+
+						<div class="tab-content" id="plan-specs">
+							<!-- Plan specs content -->
+						</div>
+
+						<div class="tab-content" id="code">
+							<!-- Code content -->
+						</div>
+					</div>
+
+					<div class="progress-container">
+						<div class="progress-header">
+							<span class="progress-label">Scanning files...</span>
+							<span class="progress-percentage">0%</span>
+						</div>
+						<div class="progress-bar">
+							<div class="progress-fill"></div>
+						</div>
+					</div>
 				</div>
+				<script>
+					window.myIconBase = "${iconBase}";
+				</script>
 				<script src="${jsUri}"></script>
 			</body>
 			</html>
         `;
 	}
 }
-
 
 // This method is called when extension is deactivated
 export function deactivate() { }

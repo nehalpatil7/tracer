@@ -1,5 +1,11 @@
-out
-dist
-node_modules
-.vscode-test/
-*.vsix
+
+# extension
+tracer/out
+tracer/dist
+tracer/node_modules
+tracer/.vscode-test/
+tracer/*.vsix
+
+# backend
+backend/.env
+backend/node_modules
