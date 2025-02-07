@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
+import multer from "multer";
 
 
 dotenv.config();
@@ -13,6 +14,9 @@ const OPENROUTER_ENDPOINT = process.env.OPENROUTER_ENDPOINT;
 
 app.use(cors());
 app.use(express.json());
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 const systemPrompt = {
     "role": "system",
@@ -107,7 +111,7 @@ async function getLLMResponse(res, conversationHistory) {
             model: 'gpt-4o-mini',
             response_format: { type: "json_object" }
         });
-        console.log('Response recieved: ', completion?.id, " due to ", completion?.choices[0]?.finish_reason);
+        console.log('Response recieved: ', completion?.id, " and task terminated due to finish_reason: ", completion?.choices[0]?.finish_reason);
 
         res.json(JSON.parse(completion?.choices[0]?.message?.content));
     } catch (error) {
@@ -117,23 +121,44 @@ async function getLLMResponse(res, conversationHistory) {
 }
 
 // test route
-app.get('/', async (req, res) => {
-    console.log('Accessed test API');
-    return res.status(200).json({ message: 'OH HELLO!' });
-});
-
-// Route: Start a new chat
-app.post('/new_chat', async (req, res) => {
-    console.log('Accessed New Chat API');
-    const { userPrompt, messages } = req.body;
-    if (!userPrompt) {
-        return res.status(400).json({ error: 'userPrompt is required' });
+app.get('/infer_title', async (req, res) => {
+    console.log('Accessed Title Inference API');
+    const summary = req.query.summary;
+    if (!summary) {
+        return res.status(400).json({ error: 'summary is required' });
     }
 
     // Build conversation history for a new chat
     const conversationHistory = [
+        { role: 'system', content: 'Please suggest an appropriate and short title for this problem statement or summary. Do not exceed the tile length more than 3 words. Return the title as strictly a json object like { "title": "" }, nothing else.' },
+        { role: 'user', content: summary }
+    ];
+
+    await getLLMResponse(res, conversationHistory);
+});
+
+// Route: Start a new chat
+app.post('/new_chat', upload.array('attachments'), async (req, res) => {
+    console.log('Accessed New Chat API');
+    const userPrompt = req.body.userPrompt;
+    const messages = req.body.messages;
+    if (!userPrompt) {
+        return res.status(400).json({ error: 'userPrompt is required' });
+    }
+
+    // process attachments
+    let attachmentContent = "";
+    if (req.files && req.files.length > 0) {
+        req.files.forEach(file => {
+            attachmentContent += `\nFilename: ${file.originalname}\nContent: ${file.buffer.toString('utf8')}`;
+        });
+    }
+    const combinedContent = attachmentContent ? `${userPrompt}\nAttachments:\n${attachmentContent}` : userPrompt;
+
+    // Build conversation history for a new chat
+    const conversationHistory = [
         systemPrompt,
-        { role: 'user', content: userPrompt }
+        { role: 'user', content: combinedContent }
     ];
     if (messages && Array.isArray(messages)) {
         conversationHistory.push(...messages);
@@ -143,19 +168,28 @@ app.post('/new_chat', async (req, res) => {
 });
 
 // Route: Continue a chat (chain_chat)
-app.post('/chain_chat', async (req, res) => {
+app.post('/chain_chat', upload.array('attachments'), async (req, res) => {
     console.log('Accessed Chain Chat API');
     // Expecting a payload with a 'messages' array containing the conversation history.
-    const { messages } = req.body;
+    const { messages } = req.body.messages;
     if (!messages || !Array.isArray(messages)) {
         return res.status(400).json({ error: 'Messages array is required' });
     }
 
+    // process attachments
+    let attachmentContent = "";
+    if (req.files && req.files.length > 0) {
+        req.files.forEach(file => {
+            attachmentContent += `\nFilename: ${file.originalname}\nContent: ${file.buffer.toString('utf8')}`;
+        });
+    }
+    const combinedContent = attachmentContent ? `${messages}\nAttachments:\n${attachmentContent}` : messages;
+
     const conversationHistory = [
         systemPrompt,
     ];
-    if (messages && Array.isArray(messages)) {
-        conversationHistory.push(...messages);
+    if (combinedContent && Array.isArray(combinedContent)) {
+        conversationHistory.push(...combinedContent);
     }
 
     await getLLMResponse(res, conversationHistory);

@@ -3,34 +3,40 @@ const vscode = acquireVsCodeApi();
 document.addEventListener('DOMContentLoaded', () => {
     // header
     const historyIcon = document.getElementById("historyIcon");
+    const historyView = document.getElementById("historyView");
+    // main
+    const mainContainer = document.querySelector('main');
     // input area
     const queryInput = document.getElementById('queryInput');
     const queryText = document.querySelector('.query-text');
     // tabs view/area
     const tabs = document.querySelectorAll('.tab');
+    const tabContainer = document.querySelector('.tab-container');
     // attachments
     const attachButton = document.getElementById("attachButton");
     const attachmentSearch = document.getElementById("attachmentSearch");
     const attachmentDropdown = document.getElementById("attachmentDropdown");
     const attachmentContainer = document.getElementById("attachmentContainer");
     const attachedFiles = new Set();
-    const attachedFilesContainer = document.createElement('div');
-    attachedFilesContainer.className = 'attached-files';
-    attachmentContainer.appendChild(attachedFilesContainer);
     //submit button
     const submitButton = document.getElementById('submitButton');
     submitButton.disabled = true;
 
 
     document.getElementById("newChat").addEventListener("click", () => {
-        const historyView = document.getElementById("historyView");
-        historyView.classList.toggle("hidden");
+        if (mainContainer) mainContainer.style.display = 'flex';
+        if (tabContainer) tabContainer.style.display = 'none';
+        if (historyView) historyView.classList.add("hidden");
     });
 
     // Toggle history view
     historyIcon.addEventListener("click", () => {
-        const historyView = document.getElementById("historyView");
-        historyView.classList.toggle("hidden");
+        if (mainContainer) mainContainer.style.display = 'none';
+        // document.getElementById("plan-specs-container").classList.add("hidden");
+        if (historyView) {
+            historyView.classList.remove("hidden");
+            renderHistoryView();
+        }
     });
 
     // handle input area
@@ -64,13 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Close the dropdown and restore the attach button
-    function closeDropdown() {
-        attachmentDropdown.classList.add("hidden");
-        attachmentSearch.classList.add("hidden");
-        attachButton.classList.remove("hidden");
-    }
-
     // Handle attachment dropdown
     attachButton.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -85,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            // Remove active class from all tabs and content
+            // Remove active class from all tabs & content
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
@@ -100,21 +99,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update the query text when submit button is clicked
     submitButton.addEventListener('click', () => {
-        console.log("Query submitted");
-        const mainContainer = document.querySelector('main');
-        const container = document.querySelector('.container');
-        const tabContainer = document.querySelector('.tab-container');
-
         const query = queryInput.value.trim();
-
         if (query) {
             if (mainContainer) mainContainer.style.display = 'none';
-
             if (tabContainer) {
                 tabContainer.style.display = 'flex';
                 if (queryText) queryText.textContent = query;
             }
-
             // Send message to extension
             vscode.postMessage({ command: "submitQuery", text: query });
             queryInput.value = '';
@@ -163,41 +154,43 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log("An error occurred in indexing.")
                 }
 
-            case 'planResponse':
-                const planSpecsContent = document.getElementById('plan-specs');
-                if (planSpecsContent) {
-                    planSpecsContent.textContent = JSON.stringify(message.data, null, 2);
-                }
+            case 'renderPlanSpecs':
+                // Save
+                savePlanSpecHistory(message.data);
+                // Render
+                renderPlanSpecsContent(message.data);
                 break;
 
             case 'selectAttachment':
-                if (message.filePath && !attachedFiles.has(message.filePath)) {
-                    attachedFiles.add(message.filePath);
-                    renderAttachedFiles();
+                if (!attachedFiles.has(fileName) && message.fileName && message.filePath) {
+                    attachedFiles.add(message.fileName);
+                    console.log(`File attached: ${message.fileName}`);
                 }
                 break;
         }
     });
 });
 
+function addAttachedFile(fileName, filePath) {
+    // If the container doesn't exist, create it
+    const container = document.getElementById("attachedFilesContainer");
 
-function renderAttachedFiles() {
-    attachedFilesContainer.innerHTML = '';
-    attachedFiles.forEach(filePath => {
-        const fileButton = document.createElement('div');
-        fileButton.className = 'attached-file';
-        fileButton.innerHTML = `
-            <span>${path.basename(filePath)}</span>
-            <button class="remove-file">&times;</button>
-        `;
-        fileButton.querySelector('.remove-file').addEventListener('click', () => {
-            attachedFiles.delete(filePath);
-            renderAttachedFiles();
-        });
-        attachedFilesContainer.appendChild(fileButton);
+    // Create the attachment chip
+    const fileDiv = document.createElement("div");
+    fileDiv.className = "attached-file";
+    fileDiv.innerHTML = `
+        <span>${fileName}</span>
+        <button class="remove-file">&times;</button>
+    `;
+
+    // Remove the attachment on clicking the remove icon
+    fileDiv.querySelector(".remove-file").addEventListener("click", () => {
+        container.removeChild(fileDiv);
+        updateTextareaPadding();
+        // Optionally, send a message to update your backend process
     });
+    container.appendChild(fileDiv);
 }
-
 
 function populateDropdown(files) {
     attachmentDropdown.innerHTML = "";
@@ -215,16 +208,222 @@ function populateDropdown(files) {
 
         item.appendChild(img);
         item.appendChild(textSpan);
-
         item.addEventListener("click", () => {
-            vscode.postMessage({ command: "selectAttachment", filePath: file.path });
-            attachmentSearch.value = file.name;
+            vscode.postMessage({
+                command: "selectAttachment",
+                filePath: file.path,
+                fileName: file.name
+            });
+            // update the UI immediately
+            addAttachedFile(file.name, file.path);
             closeDropdown();
+            updateAttachmentsWrapperPadding();
+            updateTextareaPadding();
         });
 
         attachmentDropdown.appendChild(item);
     });
-    console.log("Dropdown populated with files:", files);
+    console.log("Dropdown populated.");
+}
+
+function closeDropdown() {
+    attachmentDropdown.classList.add("hidden");
+    attachmentSearch.classList.add("hidden");
+    attachButton.classList.remove("hidden");
+}
+
+function updateAttachmentsWrapperPadding() {
+    const fab = document.getElementById("attachButton");
+    const searchBox = document.getElementById("attachmentSearch");
+    const wrapper = document.querySelector(".attachments-wrapper");
+    let offset = fab.offsetWidth + 5;
+    if (!searchBox.classList.contains("hidden")) {
+        offset += searchBox.offsetWidth + 5;
+    }
+    wrapper.style.paddingLeft = offset + "px";
+}
+
+function updateTextareaPadding() {
+    const attachmentContainer = document.getElementById("attachmentContainer");
+    const textarea = document.getElementById("queryInput");
+    textarea.style.paddingBottom = (attachmentContainer.offsetHeight + 5) + "px";
+}
+
+function renderPlanSpecsContent(planSpec) {
+    // Only render if in planning/tabs view
+    const tabContainer = document.querySelector('.tab-container');
+    if (!tabContainer || window.getComputedStyle(tabContainer).display === 'none') {
+        return;
+    }
+    let data;
+    if (!planSpec) {
+        const storedData = localStorage.getItem('planSpecsData');
+        if (storedData) {
+            data = JSON.parse(storedData);
+        } else {
+            return;
+        }
+    } else {
+        data = planSpec;
+    }
+
+    // Locate plan specs container
+    const container = document.getElementById('plan-specs');
+    if (!container) return;
+    container.innerHTML = "";
+
+    // Summary
+    const summaryTitle = document.createElement('h3');
+    summaryTitle.textContent = 'Summary';
+    container.appendChild(summaryTitle);
+    // content
+    const summaryTextarea = document.createElement('textarea');
+    summaryTextarea.style.width = '100%';
+    summaryTextarea.style.marginBottom = '1rem';
+    summaryTextarea.value = data.summary || '';
+    container.appendChild(summaryTextarea);
+
+    // Files
+    data.files.forEach((file, index) => {
+        // container
+        const fileSection = document.createElement('div');
+        fileSection.classList.add('file-section');
+        fileSection.style.marginBottom = '1rem';
+        fileSection.style.border = '1px solid #444';
+        fileSection.style.padding = '0.5rem';
+        fileSection.style.borderRadius = '4px';
+        // fileName row
+        const titleRow = document.createElement('div');
+        titleRow.style.display = 'flex';
+        titleRow.style.alignItems = 'center';
+        titleRow.style.justifyContent = 'space-between';
+        titleRow.style.marginBottom = '0.3rem';
+        // fileName
+        const pathLabel = document.createElement('span');
+        pathLabel.textContent = file.path;
+        pathLabel.style.color = 'blue';
+        pathLabel.style.flexGrow = '1';
+        // file status
+        const statusButton = document.createElement('button');
+        statusButton.textContent = file.status;
+        statusButton.style.marginLeft = '1rem';
+        // delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.innerHTML = '&times;';
+        deleteBtn.style.marginLeft = '1rem';
+        deleteBtn.style.background = 'none';
+        deleteBtn.style.border = 'none';
+        deleteBtn.style.fontSize = '1rem';
+        deleteBtn.style.cursor = 'pointer';
+        // append components
+        titleRow.appendChild(pathLabel);
+        titleRow.appendChild(statusButton);
+        titleRow.appendChild(deleteBtn);
+        fileSection.appendChild(titleRow);
+        // file content
+        const fileContentTextarea = document.createElement('textarea');
+        fileContentTextarea.style.width = '100%';
+        fileContentTextarea.value = file.content || '';
+        fileSection.appendChild(fileContentTextarea);
+        // Append file container
+        container.appendChild(fileSection);
+
+        // delete this file & update localStorage
+        deleteBtn.addEventListener('click', () => {
+            data.files.splice(index, 1);
+            savePlanSpecHistory(data);
+            renderPlanSpecsContent();
+        });
+    });
+}
+
+// Helper: generate uuid
+function generateUniqueId() {
+    return (crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString();
+}
+
+async function savePlanSpecHistory(planSpec) {
+    planSpec.id = generateUniqueId();
+    planSpec.timestamp = new Date().toISOString();
+    planSpec.status = "code" in planSpec
+        ? "Code Generated"
+        : "files" in planSpec
+            ? "Plan Generated"
+            : "Failed";
+
+    try {
+        const url = new URL("http://localhost:5001/infer_title");
+        url.searchParams.append("summary", planSpec.summary);
+        const response = await fetch(url.toString());
+        planSpec.title = response.title || "Untitled Plan";
+    } catch (error) {
+        console.error("Error inferring title", error);
+        planSpec.title = "Untitled Plan";
+    }
+    let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+    tasks.push(planSpec);
+    localStorage.setItem("historyTasks", JSON.stringify(tasks));
+    console.log("Plan saved.");
+}
+
+function updatePlanSpecInHistory(updatedTask) {
+    let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+    tasks = tasks.map(task => task.id === updatedTask.id ? updatedTask : task);
+    localStorage.setItem("historyTasks", JSON.stringify(tasks));
+    console.log("Plan updated.");
+}
+
+function renderHistoryView() {
+    const historyContainer = document.getElementById("historyView");
+    historyContainer.classList.remove("hidden");
+    historyContainer.innerHTML = "";
+
+    const tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+    if (!tasks.length) {
+        const noHistoryDiv = document.createElement("div");
+        noHistoryDiv.textContent = "No history found.";
+        noHistoryDiv.classList.add("no-history");
+        historyContainer.appendChild(noHistoryDiv);
+        document.querySelector('main').style.display = 'none';
+        document.querySelector('.tab-container').style.display = 'none';
+        return;
+    }
+
+    tasks.forEach(task => {
+        const taskElement = document.createElement('div');
+        taskElement.className = 'task';
+
+        taskElement.innerHTML = `
+            <div class="task-header">
+                <div class="task-title">${task.title}</div>
+                <div class="task-info">
+                    <span class="task-date">${new Intl.DateTimeFormat('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                        }).format(new Date(task.timestamp))}
+                    </span>
+                    <button class="task-button ${task.status}">
+                        ${task.status === "Failed"
+                                        ? `<svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
+                            <path stroke="currentColor" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m14-4v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+                            </svg>`
+                                        : `<svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
+                            <path stroke="currentColor" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m4 6 2 2 4-4m4-8v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+                            </svg>`
+                        }${task.status}
+                    </button>
+                </div>
+            </div>
+            <div class="task-content">
+                ${task.summary}
+            </div>
+        `
+        historyContainer.appendChild(taskElement);
+    });
 }
 
 

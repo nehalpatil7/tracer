@@ -2,15 +2,42 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import axios from 'axios';
+import FormData from 'form-data';
 
 
 export async function getAllFiles(): Promise<{ path: string; name: string }[]> {
+	// allowed file types
+	const allowedExtensions = new Set([
+		'.js',
+		'.ts',
+		'.jsx',
+		'.tsx',
+		'.py',
+		'.java',
+		'.cpp',
+		'.c',
+		'.cs',
+		'.go',
+		'.rb',
+		'.php',
+		'.html',
+		'.css',
+		'.scss',
+		'.json',
+		'.md',
+		'.txt',
+		'.yml',
+		'.yaml',
+		'.xml'
+	]);
 	// glob '**/*' matches all files in workspace | exclude pattern '**/xxxx/**'
 	const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
-	return files.map(file => ({
-		path: file.fsPath,
-		name: path.basename(file.fsPath)
-	}));
+	return files
+		.filter(file => allowedExtensions.has(path.extname(file.fsPath).toLowerCase()))
+		.map(file => ({
+			path: file.fsPath,
+			name: path.basename(file.fsPath)
+		}));
 }
 
 
@@ -33,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tracer.listAllFiles', async function (this: TracerSidebarView) {
 			const files = await getAllFiles();
-			vscode.window.showInformationMessage(`Found ${files.length} files`);
+			vscode.window.setStatusBarMessage(`Found ${files.length} files`, 4000);
 		}.bind(provider))
 	);
 
@@ -43,6 +70,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 class TracerSidebarView implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
+	private attachments: string[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly context: vscode.ExtensionContext) { }
 
@@ -67,7 +95,6 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 			switch (message.command) {
 				case "submitQuery":
 					// Process the query
-					console.log(message.text);
 					this.processQuery(message.text);
 
 					// Update history
@@ -87,7 +114,7 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 				case "attachFile":
 					vscode.window.showOpenDialog({ canSelectMany: false, filters: { 'All Files': ['*'] } }).then(fileUri => {
 						if (fileUri) {
-							vscode.window.showInformationMessage(`Attached file: ${fileUri[0].fsPath}`);
+							vscode.window.setStatusBarMessage(`Attached file: ${fileUri[0].fsPath}`, 4000);
 						}
 					});
 					break;
@@ -114,26 +141,34 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 
 				case "selectAttachment":
 					if (message.fileName) {
-						vscode.window.showInformationMessage(`File attached: ${message.fileName}`);
+						vscode.window.setStatusBarMessage(`File attached: ${message.fileName}`, 4000);
 					}
+					this.attachments.push(message.filePath);
 					break;
 			}
 		});
 	}
 
 	private async processQuery(query: string) {
-		console.log("processQuery called with:", query);
-		vscode.window.showInformationMessage(`Received query: ${query}`);
+		console.log("processQuery called with query with", this.attachments.length, "attachments.");
 		try {
-			console.log('Making backend call', query);
-			const response = await axios.post('http://localhost:5001/new_chat', { userPrompt: query });
-			vscode.window.showInformationMessage(`Received resp: ${response.status}`);
+			const formData = new FormData();
+			formData.append('userPrompt', query);
 
-			const resultData = response.data;
-			this._view?.webview.postMessage({ command: 'planResponse', data: resultData });
+			// read contents of the stored attachments
+			for (const filePath of this.attachments) {
+				const uri = vscode.Uri.file(filePath);
+				const fileBuffer = await vscode.workspace.fs.readFile(uri);
+				formData.append('attachments', Buffer.from(fileBuffer), path.basename(filePath));
+			}
 
+			const response = await axios.post('http://localhost:5001/new_chat', formData, {
+				headers: formData.getHeaders()
+			});
+			console.log("API success: ", response.status);
+			this._view?.webview.postMessage({ command: 'renderPlanSpecs', data: response.data });
 		} catch (error: any) {
-			vscode.window.showErrorMessage(`Backend call failed: ${error.message}`);
+			vscode.window.setStatusBarMessage(`Intelligence error: ${error.message}`, 4000);
 		}
 	}
 
@@ -151,7 +186,7 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 
 			<head>
 				<meta charset="UTF-8">
-				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this._view?.webview.cspSource}; script-src 'unsafe-inline' ${this._view?.webview.cspSource}; img-src ${this._view?.webview.cspSource} data:;">
+				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src http://localhost:5001; style-src ${this._view?.webview.cspSource}; script-src 'unsafe-inline' ${this._view?.webview.cspSource}; img-src ${this._view?.webview.cspSource} data:;">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
 				<title>Tracer 2.0</title>
 				<link rel="stylesheet" type="text/css" href="${cssUri}">
@@ -190,43 +225,59 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 								<div id="attachmentContainer" class="attachment-container">
 									<button class="fab" id="attachButton" aria-label="Add attachment">+</button>
 									<input type="text" id="attachmentSearch" class="attachment-search hidden" placeholder="Search files or folders">
-									<div id="attachmentDropdown" class="dropdown hidden"></div>
+									<div class="attachments-wrapper">
+										<div id="attachedFilesContainer" class="attached-files"></div>
+									</div>
 								</div>
+								<div id="attachmentDropdown" class="dropdown hidden"></div>
 							</div>
 							<button class="submit-button" id="submitButton">Generate Plan</button>
 						</div>
 					</main>
 
+					<!-- History view -->
+					<div id="historyView" class="history-view hidden"></div>
+
 					<!-- Planning output -->
 					<div class="tab-container" style="display: none;">
 						<div class="tabs">
 							<div class="tab active" data-tab="user-query">
-								<span class="check-icon">✓</span>
+								<svg class="check-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m4 6 2 2 4-4m4-8v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+								</svg>
 								<span class="tab-title">User Query</span>
-								<span class="expand-icon">></span>
+								<div class="tab-content active" id="user-query">
+									<div class="query-text"></div>
+								</div>
+								<svg class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m14 0-4 4m4-4-4-4"/>
+								</svg>
 							</div>
 							<div class="tab" data-tab="plan-specs">
-								<span class="check-icon">✓</span>
+								<svg class="check-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h3a3 3 0 0 0 0-6h-.025a5.56 5.56 0 0 0 .025-.5A5.5 5.5 0 0 0 7.207 9.021C7.137 9.017 7.071 9 7 9a4 4 0 1 0 0 8h2.167M12 19v-9m0 0-2 2m2-2 2 2"/>
+								</svg>
 								<span class="tab-title">Plan Specification</span>
-								<span class="expand-icon">></span>
+								<div class="tab-content" id="plan-specs">
+									<!-- Plan specs content -->
+								</div>
+								<svg class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m14 0-4 4m4-4-4-4"/>
+								</svg>
 							</div>
 							<div class="tab" data-tab="code">
-								<span class="check-icon">✓</span>
+								<svg class="check-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+									<path fill-rule="evenodd" d="M4 5.78571C4 4.80909 4.78639 4 5.77778 4H18.2222C19.2136 4 20 4.80909 20 5.78571V15H4V5.78571ZM12 12c0-.5523.4477-1 1-1h2c.5523 0 1 .4477 1 1s-.4477 1-1 1h-2c-.5523 0-1-.4477-1-1ZM8.27586 6.31035c.38089-.39993 1.01387-.41537 1.4138-.03449l2.62504 2.5c.1981.18875.3103.45047.3103.72414 0 .27368-.1122.5354-.3103.7241l-2.62504 2.5c-.39993.3809-1.03291.3655-1.4138-.0344-.38088-.4-.36544-1.033.03449-1.4138L10.175 9.5 8.31035 7.72414c-.39993-.38089-.41537-1.01386-.03449-1.41379Z" clip-rule="evenodd"/>
+									<path d="M2 17v1c0 1.1046.89543 2 2 2h16c1.1046 0 2-.8954 2-2v-1H2Z"/>
+								</svg>
 								<span class="tab-title">Code</span>
-								<span class="expand-icon">></span>
+								<div class="tab-content" id="code">
+									<!-- Code content -->
+								</div>
+								<svg class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m14 0-4 4m4-4-4-4"/>
+								</svg>
 							</div>
-						</div>
-
-						<div class="tab-content active" id="user-query">
-							<div class="query-text"></div>
-						</div>
-
-						<div class="tab-content" id="plan-specs">
-							<!-- Plan specs content -->
-						</div>
-
-						<div class="tab-content" id="code">
-							<!-- Code content -->
 						</div>
 					</div>
 
