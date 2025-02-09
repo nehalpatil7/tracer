@@ -1,6 +1,5 @@
 
 # extension
-tracer/out
 tracer/dist
 tracer/node_modules
 tracer/.vscode-test/

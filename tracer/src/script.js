@@ -507,7 +507,6 @@ function handleSaveComment(id) {
             else planSpec.comments += commentInput.value;
             Object.assign(planSpec, planSpec);
             localStorage.setItem("historyTasks", JSON.stringify(tasks));
-            console.log('DONE');
         } else {
             console.log("planSpec not found.");
         }
@@ -518,23 +517,21 @@ function handleSaveComment(id) {
 async function handleGenerateCode(id) {
     let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
     const planSpec = tasks.find(task => task.id === id);
-    console.log(id);
     try {
-    //     let url = new URL("http://localhost:5001/generate_code");
-    //     const reqBody = {
-    //         plan: planSpec
-    //     };
-    //     const response = await fetch(url, {
-    //         method: 'POST',
-    //         headers: {
-    //             'Content-Type': 'application/json'
-    //         },
-    //         body: JSON.stringify(reqBody)
-    //     });
-    //     console.log(`Response status: ${response.status}`);
-    //     const data = await response.json();
-    //     console.log(data);
-    //     localStorage.setItem(planSpec.id, JSON.stringify(data));
+        let url = new URL("http://localhost:5001/generate_code");
+        const reqBody = {
+            plan: planSpec
+        };
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(reqBody)
+        });
+        console.log(`Response status: ${response.status}`);
+        const data = await response.json();
+        localStorage.setItem(planSpec.id, JSON.stringify(data));
 
         let code = JSON.parse(localStorage.getItem(id) || "");
 

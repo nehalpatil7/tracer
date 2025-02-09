@@ -1,9 +1,12 @@
-# AI-Powered Code Refactorer
+# AI-Powered Code Refactorer 1.0.2
 
 ## Project Overview
 This project is an AI-powered Copilot for Code Planning and Generation, developed as part of the Traycer AI interview. It features general query support, personalized code modification plans and history of all your modifications.
 
 ![Home](demo.png)
+![History](history.png)
+![Plan](plan.png)
+![Code](code_diff.png)
 
 ## 🌟 Features
 - Personal Plan/Code Copilot
@@ -17,22 +20,53 @@ This project is an AI-powered Copilot for Code Planning and Generation, develope
     <img src="https://skillicons.dev/icons?i=git,ai,js,ts,vscode,html,css" />
 </p>
 
+
 ## Requirements
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- Node.js
+- npm
+- vscode
+- OpenRouter/OpenAI API key
+- Good knowledge of programming
+- Will try to include .vsix file in repo.
+
+## .env file options
+PORT=`xxxx`
+OPENROUTER_ENDPOINT=`https://openrouter.ai/api/v1`
+OPENROUTER_API_KEY=`xxxxxxxxxxxxxxxxxxxxxxxxxx`
 
 ## Extension Settings
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- No custom configurations needed.
+- Anyone welcome to make improvements to the codebase, just fork it.
 
 ## Known Issues
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- Some issue may occur, due to no regression testing of a few test cases.
+
+## How to run
+- install node
+- install npm
+- clone this repository
+- Remember to update your openRouter keys in .env file in _`tracer/backend/`_ folder
+- Open terminal
+    - Navigate to folder _`tracer/backend/`_
+    - Run command `npm install`
+    - Run command `npm run watch`
+- Open terminal again
+    - Navigate to folder tracer/tracer/
+    - Run command `npm install`
+    - Press F5
+    - Select vscode development environment
+- The extension is active, you can see it on the vscode sidebar.
+
 
 ## Release Notes
 ### 1.0.0
 Initial release of tracer
 
 ### 1.0.1
-Fixed issue #.
----
+Bug FIxes
+
+### 1.0.2
+Released the code generator along with code diff and much more
 
 ## Following extension guidelines
 Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
