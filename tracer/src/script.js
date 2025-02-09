@@ -2,45 +2,48 @@ const vscode = acquireVsCodeApi();
 
 document.addEventListener('DOMContentLoaded', () => {
     // header
-    const historyIcon = document.getElementById("historyIcon");
-    const historyView = document.getElementById("historyView");
+    const newChat = document.getElementById('newChat');
+    const historyIcon = document.getElementById('historyIcon');
+    const historyView = document.getElementById('historyView');
     // main
     const mainContainer = document.querySelector('main');
     // input area
     const queryInput = document.getElementById('queryInput');
     const queryText = document.querySelector('.query-text');
     // tabs view/area
-    const tabs = document.querySelectorAll('.tab');
     const tabContainer = document.querySelector('.tab-container');
     // attachments
-    const attachButton = document.getElementById("attachButton");
-    const attachmentSearch = document.getElementById("attachmentSearch");
-    const attachmentDropdown = document.getElementById("attachmentDropdown");
-    const attachmentContainer = document.getElementById("attachmentContainer");
+    const attachButton = document.getElementById('attachButton');
+    const attachmentSearch = document.getElementById('attachmentSearch');
+    const attachmentDropdown = document.getElementById('attachmentDropdown');
+    const attachmentContainer = document.getElementById('attachmentContainer');
     const attachedFiles = new Set();
-    //submit button
+    // submit button
     const submitButton = document.getElementById('submitButton');
     submitButton.disabled = true;
+    vscode.postMessage({ command: 'getAllFiles' });
 
 
-    document.getElementById("newChat").addEventListener("click", () => {
+    newChat.addEventListener('click', () => {
         if (mainContainer) mainContainer.style.display = 'flex';
         if (tabContainer) tabContainer.style.display = 'none';
-        if (historyView) historyView.classList.add("hidden");
+        if (historyView) historyView.classList.add('hidden');
+        updateViewName('new', "New Chat");
     });
 
     // Toggle history view
-    historyIcon.addEventListener("click", () => {
+    historyIcon.addEventListener('click', () => {
         if (mainContainer) mainContainer.style.display = 'none';
-        // document.getElementById("plan-specs-container").classList.add("hidden");
+        if (tabContainer) tabContainer.style.display = 'none';
         if (historyView) {
             historyView.classList.remove("hidden");
+            updateViewName('history', null);
             renderHistoryView();
         }
     });
 
     // handle input area
-    queryInput.addEventListener('input', function () {
+    queryInput.addEventListener('input', () => {
         if (queryInput.value.trim() === '') {
             submitButton.disabled = true;
         } else {
@@ -59,6 +62,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     attachmentContainer.addEventListener("click", (e) => {
         e.stopPropagation();
+    });
+    queryInput.addEventListener('keydown', function (event) {
+        const userOS = getUserOS();
+        const isMac = userOS === 'MacOS';
+
+        if (event.key === 'Enter' && ((isMac && event.metaKey) || (!isMac && event.ctrlKey))) {
+            event.preventDefault();
+            submitButton.click();
+        }
     });
 
     // Filter dropdown item search
@@ -82,21 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
         vscode.postMessage({ command: "getAllFiles" });
     });
 
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            // Remove active class from all tabs & content
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-            // Add active class to clicked tab
-            tab.classList.add('active');
-
-            // Show corresponding content
-            const contentId = tab.getAttribute('data-tab');
-            document.getElementById(contentId).classList.add('active');
-        });
-    });
-
     // Update the query text when submit button is clicked
     submitButton.addEventListener('click', () => {
         const query = queryInput.value.trim();
@@ -106,9 +103,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 tabContainer.style.display = 'flex';
                 if (queryText) queryText.textContent = query;
             }
+            renderLoadingView();
             // Send message to extension
             vscode.postMessage({ command: "submitQuery", text: query });
             queryInput.value = '';
+        }
+    });
+
+    // expand/collapse tabs
+    tabContainer.addEventListener('click', (e) => {
+        const expandIcon = e.target.closest('.expand-icon');
+        if (expandIcon) {
+            const tabContent = document.querySelector(`.tab-content#${expandIcon?.parentElement?.dataset?.tab}`)
+            tabContent?.classList?.toggle('active');
+            expandIcon?.classList?.toggle('active');
+            if (tabContent?.classList?.contains('active')) {
+                setTimeout(() => {
+                    tabContent?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 1000);
+            }
         }
     });
 
@@ -118,21 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
         switch (message.command) {
             case 'updateOpenFiles':
                 populateDropdown(message.files);
-                break;
-
-            case 'updateHistory':
-                const historyView = document.getElementById("historyView");
-                historyView.innerHTML = '';
-
-                message.history.forEach(query => {
-                    const item = document.createElement('div');
-                    item.className = 'history-item';
-                    item.textContent = query;
-                    item.addEventListener('click', () => {
-                        document.getElementById("queryInput").value = query;
-                    });
-                    historyView.appendChild(item);
-                });
                 break;
 
             case 'updateProgress':
@@ -148,23 +146,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         progressLabel.textContent = 'Scan complete.';
                         setTimeout(() => {
                             document.querySelector('.progress-container').style.opacity = '0';
-                        }, 2000);
+                        }, 3000);
                     }
                 } else {
                     console.log("An error occurred in indexing.")
                 }
 
             case 'renderPlanSpecs':
-                // Save
+                // Save and render
                 savePlanSpecHistory(message.data);
-                // Render
-                renderPlanSpecsContent(message.data);
+                // change view name
+                updateViewName('plan', message.data.title);
                 break;
 
             case 'selectAttachment':
                 if (!attachedFiles.has(fileName) && message.fileName && message.filePath) {
                     attachedFiles.add(message.fileName);
-                    console.log(`File attached: ${message.fileName}`);
+                    console.log(`File added: ${message.fileName}`);
                 }
                 break;
         }
@@ -249,6 +247,30 @@ function updateTextareaPadding() {
     textarea.style.paddingBottom = (attachmentContainer.offsetHeight + 5) + "px";
 }
 
+function updateViewName(view, title) {
+    const headerLabel = document.querySelector('.history-label');
+    if (view === 'history') {
+        headerLabel.textContent = "History";
+    } else {
+        headerLabel.textContent = title;
+    }
+}
+
+function renderLoadingView() {
+    const container = document.getElementById('plan-specs');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div id="loadingView">
+            <svg class="loading-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18.5A2.493 2.493 0 0 1 7.51 20H7.5a2.468 2.468 0 0 1-2.4-3.154 2.98 2.98 0 0 1-.85-5.274 2.468 2.468 0 0 1 .92-3.182 2.477 2.477 0 0 1 1.876-3.344 2.5 2.5 0 0 1 3.41-1.856A2.5 2.5 0 0 1 12 5.5m0 13v-13m0 13a2.493 2.493 0 0 0 4.49 1.5h.01a2.468 2.468 0 0 0 2.403-3.154 2.98 2.98 0 0 0 .847-5.274 2.468 2.468 0 0 0-.921-3.182 2.477 2.477 0 0 0-1.875-3.344A2.5 2.5 0 0 0 14.5 3 2.5 2.5 0 0 0 12 5.5m-8 5a2.5 2.5 0 0 1 3.48-2.3m-.28 8.551a3 3 0 0 1-2.953-5.185M20 10.5a2.5 2.5 0 0 0-3.481-2.3m.28 8.551a3 3 0 0 0 2.954-5.185" />
+            </svg>
+            <span class="thinking-text">Thinking <span class="blinking-dots"></span>
+            </span>
+        </div>
+    `;
+}
+
 function renderPlanSpecsContent(planSpec) {
     // Only render if in planning/tabs view
     const tabContainer = document.querySelector('.tab-container');
@@ -272,59 +294,154 @@ function renderPlanSpecsContent(planSpec) {
     if (!container) return;
     container.innerHTML = "";
 
+    // ID
+    const id = document.createElement('label')
+    id.textContent = data.id;
+    id.classList.add("hidden");
     // Summary
     const summaryTitle = document.createElement('h3');
     summaryTitle.textContent = 'Summary';
+    summaryTitle.style.padding = '0 10px';
     container.appendChild(summaryTitle);
     // content
-    const summaryTextarea = document.createElement('textarea');
-    summaryTextarea.style.width = '100%';
-    summaryTextarea.style.marginBottom = '1rem';
-    summaryTextarea.value = data.summary || '';
-    container.appendChild(summaryTextarea);
+    const summaryarea = document.createElement('p');
+    summaryarea.style.width = '100%';
+    summaryarea.style.marginBottom = '1rem';
+    summaryarea.style.padding = '0 10px';
+    summaryarea.textContent = data.summary || '';
+    container.appendChild(summaryarea);
 
     // Files
     data.files.forEach((file, index) => {
         // container
         const fileSection = document.createElement('div');
         fileSection.classList.add('file-section');
-        fileSection.style.marginBottom = '1rem';
-        fileSection.style.border = '1px solid #444';
         fileSection.style.padding = '0.5rem';
-        fileSection.style.borderRadius = '4px';
         // fileName row
         const titleRow = document.createElement('div');
+        titleRow.classList.add('title-row');
+        const titleRowLeft = document.createElement('div');
+        titleRowLeft.classList.add('title-row-left');
+        titleRowLeft.style.display = 'flex';
+        titleRowLeft.style.alignItems = 'center';
+        const titleRowRight = document.createElement('div');
+        titleRowRight.classList.add('title-row-right');
+        titleRowRight.style.display = 'flex';
+        titleRowRight.style.alignItems = 'center';
+        titleRow.appendChild(titleRowLeft);
+        titleRow.appendChild(titleRowRight);
         titleRow.style.display = 'flex';
         titleRow.style.alignItems = 'center';
         titleRow.style.justifyContent = 'space-between';
         titleRow.style.marginBottom = '0.3rem';
+        // file type icon
+        const img = document.createElement("img");
+        img.classList.add('title-row-img');
+        img.className = "language-icon";
+        try {
+            img.src = getLanguageIcon(file.path);
+        } catch (e) { }
+        img.alt = '</>';
+        img.style.width = "15px";
+        img.style.height = "15px";
+        img.style.marginRight = '0.5rem';
         // fileName
         const pathLabel = document.createElement('span');
+        pathLabel.classList.add('title-row-pathlabel');
         pathLabel.textContent = file.path;
-        pathLabel.style.color = 'blue';
+        pathLabel.style.fontSize = '1.10em';
+        pathLabel.style.fontWeight = 'bold';
+        pathLabel.style.color = '#ffffff';
         pathLabel.style.flexGrow = '1';
+        pathLabel.style.display = 'flex';
+        pathLabel.style.alignItems = 'center';
         // file status
-        const statusButton = document.createElement('button');
+        const statusButton = document.createElement('div');
+        statusButton.classList.add('title-row-statusbtn');
         statusButton.textContent = file.status;
-        statusButton.style.marginLeft = '1rem';
+        const commonStyles = {
+            display: 'inline-block',
+            textAlign: 'center',
+            borderRadius: '6px',
+            padding: '0.05rem 0.05rem',
+            fontSize: '0.7rem',
+            marginLeft: '1rem'
+        };
+        Object.assign(statusButton.style, commonStyles);
+        const specificStyle = statusStyles()[file.status] || statusStyles()['DEFAULT'];
+        Object.assign(statusButton.style, specificStyle);
         // delete button
         const deleteBtn = document.createElement('button');
-        deleteBtn.innerHTML = '&times;';
+        deleteBtn.classList.add('title-row-deletebtn');
+        deleteBtn.innerHTML = `
+            <svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7h14m-9 3v8m4-8v8M10 3h4a1 1 0 0 1 1 1v3H9V4a1 1 0 0 1 1-1ZM6 7h12v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7Z"/>
+            </svg>
+        `;
         deleteBtn.style.marginLeft = '1rem';
         deleteBtn.style.background = 'none';
+        deleteBtn.style.color = '#ff0000';
         deleteBtn.style.border = 'none';
-        deleteBtn.style.fontSize = '1rem';
+        deleteBtn.style.padding = '0';
+        deleteBtn.style.display = 'flex';
+        deleteBtn.style.alignItems = 'center';
+        deleteBtn.style.justifyContent = 'center';
         deleteBtn.style.cursor = 'pointer';
         // append components
-        titleRow.appendChild(pathLabel);
-        titleRow.appendChild(statusButton);
-        titleRow.appendChild(deleteBtn);
+        titleRowLeft.appendChild(img);
+        titleRowLeft.appendChild(pathLabel);
+        titleRowLeft.appendChild(statusButton);
+        titleRowRight.appendChild(deleteBtn);
         fileSection.appendChild(titleRow);
+        // references section
+        if (file.references && file.references.length > 0) {
+            const references = document.createElement('div');
+            references.classList.add('ref-container');
+            references.innerHTML = `
+                <div class="ref-container">
+                    <button class="ref-button" onclick="toggleReference(this)">
+                    <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 14 14"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="ref-icon"
+                    >
+                        <path
+                        d="M3.625 5.3125L7 8.6875L10.375 5.3125"
+                        stroke="currentColor"
+                        stroke-width="1.66667"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ></path>
+                    </svg>
+                    References
+                    </button>
+                    <div class="ref-content">
+                        <div class="ref-reference-box">
+                            ${generateReferenceHTML(file.references)}
+                        </div>
+                    </div>
+                </div>
+            `;
+            fileSection.appendChild(references);
+        }
         // file content
-        const fileContentTextarea = document.createElement('textarea');
-        fileContentTextarea.style.width = '100%';
-        fileContentTextarea.value = file.content || '';
-        fileSection.appendChild(fileContentTextarea);
+        const fileContent = document.createElement('div');
+        fileContent.classList.add('file-content');
+        fileContent.setAttribute('contenteditable', 'true');
+        fileContent.style.width = '100%';
+        fileContent.textContent = file.content || '';
+        fileContent.style.transition = 'background-color 0.3s ease';
+        fileContent.style.padding = '8px';
+        fileContent.style.border = 'none';
+        fileContent.style.borderRadius = '4px';
+        fileContent.addEventListener('blur', (e) => {
+            savePlanSpecHistory(e.target.textContent);
+        });
+        fileSection.appendChild(fileContent);
+
         // Append file container
         container.appendChild(fileSection);
 
@@ -332,9 +449,232 @@ function renderPlanSpecsContent(planSpec) {
         deleteBtn.addEventListener('click', () => {
             data.files.splice(index, 1);
             savePlanSpecHistory(data);
-            renderPlanSpecsContent();
         });
     });
+
+    // Comment & Generate buttons
+    const planSpecBtnHolder = document.createElement('div');
+    planSpecBtnHolder.classList.add('plan-spec-btn-holder');
+    planSpecBtnHolder.style.width = '100%';
+    planSpecBtnHolder.style.padding = '0 10px';
+    planSpecBtnHolder.style.display = 'flex';
+    planSpecBtnHolder.style.flexDirection = 'row';
+    planSpecBtnHolder.style.alignItems = 'center';
+    planSpecBtnHolder.style.justifyContent = 'space-between';
+    planSpecBtnHolder.innerHTML = `
+        <button class="com-message-button" onclick="toggleChat()">
+            <svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17h6l3 3v-3h2V9h-2M4 4h11v8H9l-3 3v-3H4V4Z" />
+            </svg>
+        </button>
+        <div class="com-chat-container" id="chatContainer">
+            <input type="text" placeholder="Add comments to the plan.." id="commentInput">
+            <button class="com-saveCmt-button" onclick="handleSaveComment('${data.id}')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </button>
+        </div>
+        <button class="com-submit-button" onclick="handleGenerateCode('${data.id}')">
+            Generate
+        </button>
+    `;
+    container.appendChild(planSpecBtnHolder);
+}
+
+// populate the file_references for the plan page
+function generateReferenceHTML(ref_files) {
+    return ref_files.map(ref_file => `
+    <div class="ref-file-info">
+        <div class="ref-file-icon">
+        </div>
+        <img class="language-icon" src=${getLanguageIcon(ref_file)} alt="</>" style="width: 15px; height: 15px;">
+        <div class="ref-file-name">
+            <p title="${ref_file}">${ref_file}</p>
+        </div>
+    </div>
+  `).join('');
+}
+
+// save comments func
+function handleSaveComment(id) {
+    const commentInput = document.querySelector('#commentInput');
+    if (commentInput.value.trim() !== '') {
+        let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+        const planSpec = tasks.find(task => task.id === id);
+        if (planSpec) {
+            if (!planSpec.comments) planSpec.comments = commentInput.value;
+            else planSpec.comments += commentInput.value;
+            Object.assign(planSpec, planSpec);
+            localStorage.setItem("historyTasks", JSON.stringify(tasks));
+            console.log('DONE');
+        } else {
+            console.log("planSpec not found.");
+        }
+    }
+}
+
+// generate code from plan
+async function handleGenerateCode(id) {
+    let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+    const planSpec = tasks.find(task => task.id === id);
+    console.log(id);
+    try {
+    //     let url = new URL("http://localhost:5001/generate_code");
+    //     const reqBody = {
+    //         plan: planSpec
+    //     };
+    //     const response = await fetch(url, {
+    //         method: 'POST',
+    //         headers: {
+    //             'Content-Type': 'application/json'
+    //         },
+    //         body: JSON.stringify(reqBody)
+    //     });
+    //     console.log(`Response status: ${response.status}`);
+    //     const data = await response.json();
+    //     console.log(data);
+    //     localStorage.setItem(planSpec.id, JSON.stringify(data));
+
+        let code = JSON.parse(localStorage.getItem(id) || "");
+
+        document.getElementById("user-query").classList.toggle("active");
+        document.getElementById("querydown").classList.toggle("active");
+        document.getElementById("plan-specs").classList.toggle("active");
+        document.getElementById("plandown").classList.toggle("active");
+        document.getElementById("code").classList.add("active");
+        document.getElementById("codedown").classList.toggle("active");
+
+        renderGeneratedCode(code);
+        // vscode.postMessage({ command: 'codeDiff' });
+    } catch (error) {
+        console.error("Error generating code, ", error);
+    }
+}
+
+// render code options
+async function renderGeneratedCode(codeFiles) {
+    function openCodeDiff(filename, generatedCode) {
+        console.log('message sent');
+        vscode.postMessage({
+            command: "codeDiff",
+            filename,
+            generatedCode
+        });
+    }
+    const codeContainer = document.getElementById("code");
+    if (!codeContainer) return;
+    codeContainer.innerHTML = "";
+
+    Object.entries(codeFiles).forEach(([filename, fileData], index) => {
+        const { code, status, purpose } = fileData;
+        let existingContent = "";
+        const { additions, deletions } = computeLineDiff(existingContent, code);
+
+
+        // wrapper div for each file
+        const fileSection = document.createElement("div");
+        fileSection.classList.add("component-container-unique");
+        fileSection.innerHTML = `
+            <div class="details">
+                <div class="details-unique">
+                    <div class="header-unique">
+                        <div class="title-row-statusbtn ${status.toLowerCase()}">${status}</div>
+                        <span class="file-name-unique">${filename}</span>
+                        <div class="modify-badge-unique">
+                            <img class="language-icon" src=${getLanguageIcon(filename)} alt="</>" style="width: 22px; height: 22px;">
+                        </div>
+                    </div>
+                    <div class="description-unique">${purpose}</div>
+                </div>
+                <div class="details-unique2">
+                    <div class="line-changes-unique">
+                        Lines changed: <span class="added-unique">+${additions}</span> <span class="removed-unique">-${deletions}</span>
+                    </div>
+                    <div class="change-indicators-unique">
+                        <div class="change-indicator-unique"></div>
+                        <div class="change-indicator-unique"></div>
+                        <div class="change-indicator-unique"></div>
+                        <div class="change-indicator-unique"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        fileSection.addEventListener("click", () => openCodeDiff(filename, code));
+        codeContainer.appendChild(fileSection);
+        updateChangeIndicators(additions, deletions);
+    });
+}
+
+// count diffs
+function computeLineDiff(existingContent, newContent) {
+    const existingLines = existingContent.split("\n");
+    const newLines = newContent.split("\n");
+    let additions = 0, deletions = 0, modifications = 0;
+
+    const maxLines = Math.max(existingLines.length, newLines.length);
+    for (let i = 0; i < maxLines; i++) {
+        if (existingLines[i] !== newLines[i]) {
+            if (!existingLines[i]) {
+                additions++;
+            } else if (!newLines[i]) {
+                deletions++;
+            } else {
+                modifications++;
+            }
+        }
+    }
+    return { additions, deletions };
+}
+
+function updateChangeIndicators(additions, deletions) {
+    const totalChanges = additions + deletions;
+    const changeIndicators = document.querySelectorAll('.change-indicator-unique');
+    const totalDivs = changeIndicators.length;
+    const greenDivs = Math.round((additions / totalChanges) * totalDivs);
+    const redDivs = Math.round((deletions / totalChanges) * totalDivs);
+
+    changeIndicators.forEach((div, index) => {
+        if (index < greenDivs) {
+            div.classList.add('green-unique');
+            div.classList.remove('red-unique');
+        } else if (index < greenDivs + redDivs) {
+            div.classList.add('red-unique');
+            div.classList.remove('green-unique');
+        } else {
+            div.classList.remove('green-unique', 'red-unique');
+        }
+    });
+}
+
+// expand/collapse the comments div
+function toggleChat() {
+    const chatContainer = document.getElementById('chatContainer');
+    chatContainer.classList.toggle('show');
+    const submitBtn = document.querySelector('.com-submit-button');
+    const isToggled = chatContainer.classList.contains('show');
+    if (isToggled) {
+        submitBtn.style.width = '0px';
+        submitBtn.style.marginRight = '0px';
+        submitBtn.style.zIndex = '-1';
+    } else {
+        submitBtn.style.width = '80px';
+        submitBtn.style.marginRight = '0 8px';
+        submitBtn.style.zIndex = '2';
+    }
+}
+// expand/collapse the file references div
+function toggleReference(button) {
+    const content = button.nextElementSibling;
+    const icon = button.querySelector('.ref-icon');
+
+    if (content.style.maxHeight) {
+        content.style.maxHeight = null;
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.maxHeight = content.scrollHeight + "px";
+        icon.style.transform = 'rotate(180deg)';
+    }
 }
 
 // Helper: generate uuid
@@ -343,27 +683,35 @@ function generateUniqueId() {
 }
 
 async function savePlanSpecHistory(planSpec) {
-    planSpec.id = generateUniqueId();
-    planSpec.timestamp = new Date().toISOString();
-    planSpec.status = "code" in planSpec
+    if (!planSpec.id) planSpec.id = generateUniqueId();
+    if (!planSpec.timestamp) planSpec.timestamp = new Date().toISOString();
+    if (!planSpec.status) planSpec.status = "code" in planSpec
         ? "Code Generated"
         : "files" in planSpec
             ? "Plan Generated"
             : "Failed";
 
-    try {
-        const url = new URL("http://localhost:5001/infer_title");
-        url.searchParams.append("summary", planSpec.summary);
-        const response = await fetch(url.toString());
-        planSpec.title = response.title || "Untitled Plan";
-    } catch (error) {
-        console.error("Error inferring title", error);
-        planSpec.title = "Untitled Plan";
+    if (!planSpec.title) {
+        try {
+            let url = new URL("http://localhost:5001/infer_title");
+            url.searchParams.append("summary", planSpec.summary);
+            const response = await fetch(url.toString());
+            const data = await response.json()
+            planSpec.title = data.title || "Untitled Plan";
+        } catch (error) {
+            console.error("Error inferring title", error);
+            planSpec.title = "Untitled Plan";
+        }
     }
     let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
-    tasks.push(planSpec);
+    const existingTask = tasks.find(task => task.id === planSpec.id);
+    if (existingTask) {
+        Object.assign(existingTask, planSpec);
+    } else {
+        tasks.push(planSpec);
+    }
     localStorage.setItem("historyTasks", JSON.stringify(tasks));
-    console.log("Plan saved.");
+    renderPlanSpecsContent(planSpec);
 }
 
 function updatePlanSpecInHistory(updatedTask) {
@@ -371,6 +719,27 @@ function updatePlanSpecInHistory(updatedTask) {
     tasks = tasks.map(task => task.id === updatedTask.id ? updatedTask : task);
     localStorage.setItem("historyTasks", JSON.stringify(tasks));
     console.log("Plan updated.");
+}
+
+function deleteHistoryRecord(taskId) {
+    const taskElement = document.querySelector(`.task[data-task-id="${taskId}"]`);
+    if (taskElement) {
+        taskElement.style.transition = 'opacity 0.3s, transform 0.3s';
+        taskElement.style.opacity = '0';
+        taskElement.style.transform = 'translateY(-20px)';
+
+        setTimeout(() => {
+            let tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+            tasks = tasks.filter(task => task.id !== taskId);
+            localStorage.setItem("historyTasks", JSON.stringify(tasks));
+
+            taskElement.remove();
+            if (tasks.length === 0) {
+                renderHistoryView();
+            }
+        }, 300);
+    }
+    console.log("Plan deleted, ID: ", taskId);
 }
 
 function renderHistoryView() {
@@ -392,40 +761,99 @@ function renderHistoryView() {
     tasks.forEach(task => {
         const taskElement = document.createElement('div');
         taskElement.className = 'task';
+        taskElement.dataset.taskId = task.id;
 
         taskElement.innerHTML = `
-            <div class="task-header">
-                <div class="task-title">${task.title}</div>
-                <div class="task-info">
-                    <span class="task-date">${new Intl.DateTimeFormat('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true
-                        }).format(new Date(task.timestamp))}
-                    </span>
-                    <button class="task-button ${task.status}">
-                        ${task.status === "Failed"
-                                        ? `<svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
-                            <path stroke="currentColor" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m14-4v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
-                            </svg>`
-                                        : `<svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
-                            <path stroke="currentColor" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m4 6 2 2 4-4m4-8v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
-                            </svg>`
-                        }${task.status}
-                    </button>
+            <div class="delete-zone">
+                <button class="delete-btn">
+                <svg class="trash-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 19L18 5m0 14L6 5"/>
+                </svg>
+                </button>
+            </div>
+            <div class="task-main">
+                <div class="task-header">
+                    <div class="task-title">${task.title}</div>
+                    <div class="task-info">
+                        <span class="task-date">${new Intl.DateTimeFormat('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }).format(new Date(task.timestamp))}
+                        </span>
+                        <button class="task-button ${task.status}">
+                            ${task.status === "Failed"
+                ? `<svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
+                                                <path stroke="currentColor" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m14-4v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+                                                </svg>`
+                : `<svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24">
+                                                <path stroke="currentColor" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m4 6 2 2 4-4m4-8v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+                                                </svg>`
+            }${task.status}
+                        </button>
+                    </div>
+                </div>
+                <div class="task-content">
+                    ${task.summary}
                 </div>
             </div>
-            <div class="task-content">
-                ${task.summary}
-            </div>
-        `
+        `;
+        const taskMain = taskElement.querySelector('.task-main');
+        taskMain.addEventListener('click', () => handleTaskClick(task.id));
+
+        const deleteZone = taskElement.querySelector('.delete-zone');
+        const deleteBtn = taskElement.querySelector('.delete-btn');
+        [deleteZone, deleteBtn].forEach(element => {
+            element.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const taskId = taskElement.dataset.taskId;
+                deleteHistoryRecord(taskId);
+            });
+        });
         historyContainer.appendChild(taskElement);
     });
 }
 
+function handleTaskClick(taskId) {
+    const tasks = JSON.parse(localStorage.getItem("historyTasks") || "[]");
+    const clickedTask = tasks.find(task => task.id === taskId);
+
+    if (clickedTask) {
+        // Hide history view
+        document.getElementById("historyView").classList.add("hidden");
+
+        // Show tab container
+        const tabContainer = document.querySelector('.tab-container');
+        if (tabContainer) {
+            tabContainer.style.display = 'flex';
+        }
+
+        // Render plan specs
+        renderPlanSpecsContent(clickedTask);
+        updateViewName('plan', clickedTask.title);
+
+        // Update query text
+        const queryText = document.querySelector('.query-text');
+        if (queryText) {
+            queryText.textContent = clickedTask.query || 'No Query available';
+        }
+    }
+}
+
+function getUserOS() {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('mac')) {
+        return 'MacOS';
+    } else if (platform.includes('win')) {
+        return 'Windows';
+    } else if (platform.includes('linux')) {
+        return 'Linux';
+    }
+    return 'MacOS';
+}
 
 function getLanguageIcon(fileName) {
     const ext = fileName.substring(fileName.lastIndexOf('.'));
@@ -555,4 +983,27 @@ function getLanguageIcon(fileName) {
         case ".zip": return window.myIconBase + "/zip.svg";
         default: return window.myIconBase + "/document.svg";
     }
+}
+
+function statusStyles() {
+    return {
+        'NEW': {
+            width: '35px',
+            backgroundColor: '#14532D4D',
+            color: 'rgb(74, 222, 128)',
+            border: '1px solid rgb(74, 222, 128)'
+        },
+        'DELETED': {
+            width: '58px',
+            backgroundColor: '#ff00001f',
+            color: '#f14c4c',
+            border: '1px solid #f14c4ca1'
+        },
+        'DEFAULT': {
+            width: '62px',
+            backgroundColor: '#1e3A8A4D',
+            color: '#17daff',
+            border: '1px solid #179fff'
+        }
+    };
 }

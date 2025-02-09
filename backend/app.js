@@ -20,7 +20,7 @@ const upload = multer({ storage });
 
 const systemPrompt = {
     "role": "system",
-    "content": `Please provide a Plan Specification structured as follows in JSON format given at end (required objects' title represented by asterisk in order; infer from the user query what type of task this is: new task, refactoring task, error fixes task; refer to specific cases if any additional information needed in task type requirements):
+    "content": `You are a Project Planner and a Code-copilot. Your task is to provide a Plan Specification structured as follows in JSON format given at end (required objects' title represented by asterisk in order; infer from the user query what type of task this is: new task, refactoring task, error fixes task; refer to specific cases if any additional information needed in task type requirements) following the guidelines given below:
 
     * Summary (summary object)
     Provide a clear, concise overview of the plan in a single paragraph of what the problem describes and how are we going to solve this.
@@ -32,12 +32,15 @@ const systemPrompt = {
     * Files Required (as an array of objects (each object representing a file))
     For each file, specify:
     1. [filepath/filename] [NEW/MODIFIED/DELETED]
-    2. Content: Extremely detailed explanation in a single paragraph of the file's components, configurations, dependencies, functionality and implementation details.
+    2. Content: Detailed explanation of the file's components, configurations, dependencies, functionality and implementation details. Every minute thing should be included in this explanation.
     3. The content paragraph's first line should be the file purpose.
+    4. References to files if any attached or referenced from in the solution.
 
 
     ADDITIONAL NOTES:
-    - Return error if user has mentioned something in the query about specific file(s) but forgot to attach the file(s)
+    - Return error if user has mentioned something in the query about specific file(s) but forgot to attach the file(s).
+    - Work out your own plan before rushing to a conclusion.
+    - The plan will be later given to an LLM/assistant like you. Thus, the plan must produce a working output, even if implemented with most basic functionality.
     - Files should be listed in order of importance:
     1. Core configuration files (package.json, config files)
     2. Main application files (app.js, index.js)
@@ -51,13 +54,14 @@ const systemPrompt = {
     - Each file specification may include:
     1. Complete relative path with filename formatted as path
     2. Tag indicating file status (NEW/MODIFIED/DELETED)
-    3. Detailed explanation of functionality
+    3. Extremely detailed explanation of functionality
     4. Reference to another file if required (appended as a json object with the file object which is referencing another file)
     5. Required dependencies and versions
     6. Configuration details
     7. Code implementation guidelines
     8. Integration points with other files
     9. Command(s) should be included as text (no formatting) in the file specs if needed.
+    10. In the file references, it should be an array of strings, with only filenames/filepaths as the strings, nothing else.
 
     - The plan should not include:
     1. Code examples/snippets
@@ -92,14 +96,64 @@ const systemPrompt = {
             "path": "filepath/filename",
             "status": "[NEW/MODIFIED/DELETED]",
             "content": ""
+            "references": [...filepaths]
         }
         ]
     }`
 }
 
+const codeGenPrompt = {
+    role: "system",
+    content: `You are a Code-copilot specialized in generating code changes based on a provided plan specification. Your task is to produce a complete, fully functional codebase for the files described in the plan. Follow these guidelines strictly:
+
+        1. Generate Full, Complete Code:
+        - For each file, generate all necessary code so that the file is fully implemented and ready to run. Do not provide partial snippets or summaries.
+        - Include complete class definitions, function implementations, configuration settings, error handling, and any other necessary components.
+        - Do not truncate any file's content, even if the resulting codebase is large.
+
+        2. Generate Clean, Accurate Code:
+        - Write syntactically correct code that adheres to best practices and coding conventions for the target language.
+        - Do not include any extra commentary or unnecessary comments in the code—only include inline comments when absolutely necessary for clarity.
+
+        3. File-Based Output Format:
+        - Return your response as a valid JSON object.
+        - Each key in the JSON object must be the filename (including its relative path if needed) and the corresponding value must be an object with 2 keys.
+            - code: the entire code content for that file.
+            - status: the status of the file [NEW/MODIFIED/DELETED].
+            - purpose: what purpose the file serves in maximum of 5 words.
+        - For example:
+        {
+            "src/index.js": { "code": "// JavaScript code here...", "status": "NEW", "purpose": "..." },
+            "src/styles.css": { "code": "/* CSS code here... */", "status": "NEW", "purpose": "..." },
+            "README.md": { "code": "# Project Documentation...", "status": "NEW", "purpose": "..." }
+        }
+
+        4. Plan Specification Input:
+        - The plan will be provided as a JSON object with two keys: "summary" and "files".
+        - The "files" key is an array of objects. Each object includes:
+            - "path": the file path and name.
+            - "status": the file status (e.g., NEW, MODIFIED, DELETED).
+            - "content": a detailed description of the required code changes.
+            - "references": an array containing the files referenced in the current file.
+        - Use this information to generate the appropriate code for each file.
+
+        5. Do Not Include Extra Explanations:
+        - Your entire response must be a valid JSON object following the above structure.
+        - Do not insert any additional text, explanation, or commentary outside of the JSON structure or even in the code.
+
+        Your response must strictly adhere to the following JSON format:
+        {
+            "filename1": "complete code content for file 1",
+            "filename2": "complete code content for file 2",
+            ...
+        }
+
+        Generate only the code files as specified.`
+}
+
 
 // Helper function to stream responses from OpenAI
-async function getLLMResponse(res, conversationHistory) {
+async function getLLMResponse(conversationHistory) {
     try {
         const openai = new OpenAI({
             baseURL: OPENROUTER_ENDPOINT,
@@ -113,14 +167,14 @@ async function getLLMResponse(res, conversationHistory) {
         });
         console.log('Response recieved: ', completion?.id, " and task terminated due to finish_reason: ", completion?.choices[0]?.finish_reason);
 
-        res.json(JSON.parse(completion?.choices[0]?.message?.content));
+        return JSON.parse(completion?.choices[0]?.message?.content);
     } catch (error) {
         console.error('Error streaming response:', error);
-        res.status(500).json({ error: error.toString() });
+        return null;
     }
 }
 
-// test route
+// infer_title route
 app.get('/infer_title', async (req, res) => {
     console.log('Accessed Title Inference API');
     const summary = req.query.summary;
@@ -134,7 +188,12 @@ app.get('/infer_title', async (req, res) => {
         { role: 'user', content: summary }
     ];
 
-    await getLLMResponse(res, conversationHistory);
+    try {
+        res.status(200).json(await getLLMResponse(conversationHistory));
+    } catch (error) {
+        console.error('Error in getLLMResponse:', error.toString());
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Route: Start a new chat
@@ -164,14 +223,24 @@ app.post('/new_chat', upload.array('attachments'), async (req, res) => {
         conversationHistory.push(...messages);
     }
 
-    await getLLMResponse(res, conversationHistory);
+    try {
+        const llmResponse = await getLLMResponse(conversationHistory);
+        const resObj = {
+            ...llmResponse,
+            attachments: attachmentContent
+        };
+        res.status(200).json(resObj);
+    } catch (error) {
+        console.error('Error in getLLMResponse:', error.toString());
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Route: Continue a chat (chain_chat)
 app.post('/chain_chat', upload.array('attachments'), async (req, res) => {
     console.log('Accessed Chain Chat API');
     // Expecting a payload with a 'messages' array containing the conversation history.
-    const { messages } = req.body.messages;
+    const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) {
         return res.status(400).json({ error: 'Messages array is required' });
     }
@@ -187,18 +256,41 @@ app.post('/chain_chat', upload.array('attachments'), async (req, res) => {
 
     const conversationHistory = [
         systemPrompt,
+        ...messages
     ];
     if (combinedContent && Array.isArray(combinedContent)) {
         conversationHistory.push(...combinedContent);
     }
-
-    await getLLMResponse(res, conversationHistory);
+    try {
+        const llmResponse = await getLLMResponse(conversationHistory);
+        res.status(200).json(llmResponse);
+    } catch (error) {
+        console.error('Error in chain_chat getLLMResponse:', error.toString());
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Route: Generate Code (generate_code)
 app.post('/generate_code', async (req, res) => {
     console.log('Accessed Generate Code API');
+    const planSpec = req.body.plan;
+    if (!planSpec) {
+        return res.status(400).json({ error: 'Plan specification is required' });
+    }
+
+    const conversationHistory = [
+        codeGenPrompt,
+        { role: 'user', content: JSON.stringify(planSpec) }
+    ];
+    try {
+        const codeGenResponse = await getLLMResponse(conversationHistory);
+        res.json(codeGenResponse);
+    } catch (error) {
+        console.error('Error generating code:', error.toString());
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
+
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

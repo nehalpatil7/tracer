@@ -63,8 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.setStatusBarMessage(`Found ${files.length} files`, 4000);
 		}.bind(provider))
 	);
-
-	console.log('Congratulations, your extension "tracer" is now active!');
+	vscode.window.setStatusBarMessage('Tracer 2.0 is now active!', 4000);
 }
 
 
@@ -96,19 +95,6 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 				case "submitQuery":
 					// Process the query
 					this.processQuery(message.text);
-
-					// Update history
-					const queryHistory = this.context.globalState.get<string[]>('queryHistory', []);
-					queryHistory.unshift(message.text);
-					await this.context.globalState.update('queryHistory', queryHistory);
-
-					// Send updated history back to webview
-					if (this._view) {
-						this._view.webview.postMessage({
-							command: 'updateHistory',
-							history: queryHistory
-						});
-					}
 					break;
 
 				case "attachFile":
@@ -145,6 +131,35 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					}
 					this.attachments.push(message.filePath);
 					break;
+
+				case "codeDiff":
+					// vscode.commands.executeCommand('vscode.diff', vscode.Uri.file('/Users/npatil14/Downloads/Tracer/tracer/backend/app.js'), vscode.Uri.file('/Users/npatil14/Downloads/Tracer/app2.js'));
+					const { filename, generatedCode } = message;
+
+					// Search if the file exists in the workspace
+					const files = await vscode.workspace.findFiles(filename, '**/node_modules/**');
+
+					let originalFileUri: vscode.Uri;
+					if (files.length > 0) {
+						// File exists: Use its path
+						originalFileUri = files[0];
+					} else {
+						// File does not exist: Create a blank untitled file for comparison
+						originalFileUri = vscode.Uri.file(`${vscode.workspace.workspaceFolders?.[0].uri.fsPath}/${filename}`);
+						await vscode.workspace.fs.writeFile(originalFileUri, Buffer.from("", 'utf8'));
+					}
+
+					// Create a temporary file for the new code
+					const newFileUri = vscode.Uri.file(`${originalFileUri.fsPath}.new`);
+					await vscode.workspace.fs.writeFile(newFileUri, Buffer.from(generatedCode, 'utf8'));
+
+					// Open diff editor
+					vscode.commands.executeCommand(
+						'vscode.diff',
+						originalFileUri,
+						newFileUri,
+						`Changes in ${filename}`
+					);
 			}
 		});
 	}
@@ -165,6 +180,7 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 			const response = await axios.post('http://localhost:5001/new_chat', formData, {
 				headers: formData.getHeaders()
 			});
+			response.data.query = query;
 			console.log("API success: ", response.status);
 			this._view?.webview.postMessage({ command: 'renderPlanSpecs', data: response.data });
 		} catch (error: any) {
@@ -197,7 +213,7 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					<!-- Header Section -->
 					<header>
 						<div class="header-content">
-							<span class="history-label">History</span>
+							<span class="history-label">New Chat</span>
 							<button class="icon-button" id="newChat">
 								<svg class="w-5 h-5 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24">
 									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-7 7V5"/>
@@ -239,45 +255,47 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					<div id="historyView" class="history-view hidden"></div>
 
 					<!-- Planning output -->
-					<div class="tab-container" style="display: none;">
-						<div class="tabs">
+					<div class="tab-container">
+						<div class="tab head">
 							<div class="tab active" data-tab="user-query">
 								<svg class="check-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m4 6 2 2 4-4m4-8v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 3v4a1 1 0 0 1-1 1H5m4 6 2 2 4-4m4-8v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z" />
 								</svg>
 								<span class="tab-title">User Query</span>
-								<div class="tab-content active" id="user-query">
-									<div class="query-text"></div>
-								</div>
-								<svg class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m14 0-4 4m4-4-4-4"/>
+								<svg id="querydown" class="expand-icon active" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
 								</svg>
 							</div>
-							<div class="tab" data-tab="plan-specs">
+							<div class="tab-content active" id="user-query">
+								<div class="query-text"></div>
+							</div>
+						</div>
+
+						<div class="tab head">
+							<div class="tab active" data-tab="plan-specs">
 								<svg class="check-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h3a3 3 0 0 0 0-6h-.025a5.56 5.56 0 0 0 .025-.5A5.5 5.5 0 0 0 7.207 9.021C7.137 9.017 7.071 9 7 9a4 4 0 1 0 0 8h2.167M12 19v-9m0 0-2 2m2-2 2 2"/>
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h3a3 3 0 0 0 0-6h-.025a5.56 5.56 0 0 0 .025-.5A5.5 5.5 0 0 0 7.207 9.021C7.137 9.017 7.071 9 7 9a4 4 0 1 0 0 8h2.167M12 19v-9m0 0-2 2m2-2 2 2" />
 								</svg>
 								<span class="tab-title">Plan Specification</span>
-								<div class="tab-content" id="plan-specs">
-									<!-- Plan specs content -->
-								</div>
-								<svg class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m14 0-4 4m4-4-4-4"/>
+								<svg id="plandown" class="expand-icon active" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
 								</svg>
 							</div>
-							<div class="tab" data-tab="code">
+							<div class="tab-content active" id="plan-specs"></div>
+						</div>
+
+						<div class="tab head">
+							<div class="tab active" data-tab="code">
 								<svg class="check-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
-									<path fill-rule="evenodd" d="M4 5.78571C4 4.80909 4.78639 4 5.77778 4H18.2222C19.2136 4 20 4.80909 20 5.78571V15H4V5.78571ZM12 12c0-.5523.4477-1 1-1h2c.5523 0 1 .4477 1 1s-.4477 1-1 1h-2c-.5523 0-1-.4477-1-1ZM8.27586 6.31035c.38089-.39993 1.01387-.41537 1.4138-.03449l2.62504 2.5c.1981.18875.3103.45047.3103.72414 0 .27368-.1122.5354-.3103.7241l-2.62504 2.5c-.39993.3809-1.03291.3655-1.4138-.0344-.38088-.4-.36544-1.033.03449-1.4138L10.175 9.5 8.31035 7.72414c-.39993-.38089-.41537-1.01386-.03449-1.41379Z" clip-rule="evenodd"/>
-									<path d="M2 17v1c0 1.1046.89543 2 2 2h16c1.1046 0 2-.8954 2-2v-1H2Z"/>
+									<path fill-rule="evenodd" d="M4 5.78571C4 4.80909 4.78639 4 5.77778 4H18.2222C19.2136 4 20 4.80909 20 5.78571V15H4V5.78571ZM12 12c0-.5523.4477-1 1-1h2c.5523 0 1 .4477 1 1s-.4477 1-1 1h-2c-.5523 0-1-.4477-1-1ZM8.27586 6.31035c.38089-.39993 1.01387-.41537 1.4138-.03449l2.62504 2.5c.1981.18875.3103.45047.3103.72414 0 .27368-.1122.5354-.3103.7241l-2.62504 2.5c-.39993.3809-1.03291.3655-1.4138-.0344-.38088-.4-.36544-1.033.03449-1.4138L10.175 9.5 8.31035 7.72414c-.39993-.38089-.41537-1.01386-.03449-1.41379Z" clip-rule="evenodd" />
+									<path d="M2 17v1c0 1.1046.89543 2 2 2h16c1.1046 0 2-.8954 2-2v-1H2Z" />
 								</svg>
 								<span class="tab-title">Code</span>
-								<div class="tab-content" id="code">
-									<!-- Code content -->
-								</div>
-								<svg class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m14 0-4 4m4-4-4-4"/>
+								<svg id="codedown" class="expand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+									<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
 								</svg>
 							</div>
+							<div class="tab-content" id="code"></div>
 						</div>
 					</div>
 
