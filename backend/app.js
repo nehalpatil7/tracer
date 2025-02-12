@@ -92,12 +92,12 @@ const systemPrompt = {
     {
         "summary": "",
         "files": [
-        {
-            "path": "filepath/filename",
-            "status": "[NEW/MODIFIED/DELETED]",
-            "content": ""
-            "references": [...filepaths]
-        }
+            {
+                "path": "filepath/filename",
+                "status": "[NEW/MODIFIED/DELETED]",
+                "content": ""
+                "references": [...filepaths]
+            }
         ]
     }`
 }

@@ -89,6 +89,10 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 		// Load HTML content
 		webviewView.webview.html = this.getHtmlContent(iconBaseUri.toString());
 
+		// Register the provider
+		const diffProvider = new DiffContentProvider();
+		vscode.workspace.registerTextDocumentContentProvider('diffgen', diffProvider);
+
 		// Handle messages from Webview
 		webviewView.webview.onDidReceiveMessage(async (message) => {
 			switch (message.command) {
@@ -132,8 +136,26 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 					this.attachments.push(message.filePath);
 					break;
 
+				// case "diffCount":
+				// 	// Search if the file exists in the workspace
+				// 	const file = await vscode.workspace.findFiles(message.filename, '**/node_modules/**');
+				// 	let existingContent;
+				// 	if (file.length > 0) {
+				// 		existingContent = await vscode.workspace.fs.readFile(file[0]);
+				// 		existingContent = new TextDecoder().decode(existingContent);
+
+				// 		console.log(existingContent);
+				// 	}
+
+				// 	// Send existing content to the script
+				// 	if (this._view) {
+				// 		this._view.webview.postMessage({
+				// 			command: "getOldFile",
+				// 			file: existingContent
+				// 		});
+				// 	}
+
 				case "codeDiff":
-					// vscode.commands.executeCommand('vscode.diff', vscode.Uri.file('/Users/npatil14/Downloads/Tracer/tracer/backend/app.js'), vscode.Uri.file('/Users/npatil14/Downloads/Tracer/app2.js'));
 					const { filename, generatedCode } = message;
 
 					// Search if the file exists in the workspace
@@ -149,17 +171,16 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
 						await vscode.workspace.fs.writeFile(originalFileUri, Buffer.from("", 'utf8'));
 					}
 
-					// Create a temporary file for the new code
-					const newFileUri = vscode.Uri.file(`${originalFileUri.fsPath}.new`);
-					await vscode.workspace.fs.writeFile(newFileUri, Buffer.from(generatedCode, 'utf8'));
-
-					// Open diff editor
+					// create a virtual URI for generated content, ex: let’s call the custom scheme "diffgen"
+					const genUri = vscode.Uri.parse(`diffgen:${originalFileUri.fsPath}?generated`);
+					diffProvider.update(genUri, generatedCode);
 					vscode.commands.executeCommand(
 						'vscode.diff',
 						originalFileUri,
-						newFileUri,
-						`Changes in ${filename}`
+						genUri,
+						`Tracer proposed changes: ${filename}`
 					);
+					break;
 			}
 		});
 	}
@@ -318,6 +339,25 @@ class TracerSidebarView implements vscode.WebviewViewProvider {
         `;
 	}
 }
+
+
+class DiffContentProvider implements vscode.TextDocumentContentProvider {
+	private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
+	public onDidChange = this._onDidChange.event;
+
+	// Save generated code keyed by the URI
+	private contents = new Map<string, string>();
+
+	update(uri: vscode.Uri, content: string) {
+		this.contents.set(uri.toString(), content);
+		this._onDidChange.fire(uri);
+	}
+
+	provideTextDocumentContent(uri: vscode.Uri): string {
+		return this.contents.get(uri.toString()) ?? "";
+	}
+}
+
 
 // This method is called when extension is deactivated
 export function deactivate() { }

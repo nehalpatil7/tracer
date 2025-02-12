@@ -457,7 +457,8 @@ function renderPlanSpecsContent(planSpec, codeFiles=null) {
         fileContent.style.border = 'none';
         fileContent.style.borderRadius = '4px';
         fileContent.addEventListener('blur', (e) => {
-            savePlanSpecHistory(e.target.textContent);
+            data.files[index].content = e.target.textContent;
+            savePlanSpecHistory(data);
         });
         fileSection.appendChild(fileContent);
 
@@ -499,7 +500,9 @@ function renderPlanSpecsContent(planSpec, codeFiles=null) {
         </button>
     `;
     container.appendChild(planSpecBtnHolder);
-    renderGeneratedCode(codeFiles, true);
+    if (codeFiles) {
+        renderGeneratedCode(codeFiles, true);
+    }
 }
 
 // populate the file_references for the plan page
@@ -632,7 +635,7 @@ async function renderGeneratedCode(codeFiles, saved=false) {
 function computeLineDiff(existingContent, newContent) {
     const existingLines = existingContent.split("\n");
     const newLines = newContent.split("\n");
-    let additions = 0, deletions = 0, modifications = 0;
+    let additions = 0, deletions = 0;
 
     const maxLines = Math.max(existingLines.length, newLines.length);
     for (let i = 0; i < maxLines; i++) {
@@ -641,8 +644,6 @@ function computeLineDiff(existingContent, newContent) {
                 additions++;
             } else if (!newLines[i]) {
                 deletions++;
-            } else {
-                modifications++;
             }
         }
     }
@@ -833,6 +834,7 @@ function renderHistoryView() {
                 e.stopPropagation();
                 const taskId = taskElement.dataset.taskId;
                 deleteHistoryRecord(taskId);
+                localStorage.removeItem(taskId);
             });
         });
         historyContainer.appendChild(taskElement);
