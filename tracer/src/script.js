@@ -125,6 +125,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // replace file-status on window resize
+    window.addEventListener('resize', () => {
+        const statusBtn = document.querySelector('.title-row-statusbtn');
+        const initial = statusBtn.dataset.fullText || statusBtn.textContent;
+        if (window.innerWidth < 270) {
+            statusBtn.textContent = initial.charAt(0);
+            statusBtn.style.width = '20px';
+        } else {
+            statusBtn.textContent = initial;
+            let status = statusStyles();
+            if (initial in status) {
+                statusBtn.style.width = status[initial]['width'];
+            } else {
+                statusBtn.style.width = status['DEFAULT']['width'];
+            }
+        }
+    });
+
     // Handle messages from extension
     window.addEventListener('message', event => {
         const message = event.data;
@@ -271,7 +289,7 @@ function renderLoadingView() {
     `;
 }
 
-function renderPlanSpecsContent(planSpec) {
+function renderPlanSpecsContent(planSpec, codeFiles=null) {
     // Only render if in planning/tabs view
     const tabContainer = document.querySelector('.tab-container');
     if (!tabContainer || window.getComputedStyle(tabContainer).display === 'none') {
@@ -358,6 +376,7 @@ function renderPlanSpecsContent(planSpec) {
         // file status
         const statusButton = document.createElement('div');
         statusButton.classList.add('title-row-statusbtn');
+        statusButton.dataset.fullText = file.status;
         statusButton.textContent = file.status;
         const commonStyles = {
             display: 'inline-block',
@@ -480,6 +499,7 @@ function renderPlanSpecsContent(planSpec) {
         </button>
     `;
     container.appendChild(planSpecBtnHolder);
+    renderGeneratedCode(codeFiles, true);
 }
 
 // populate the file_references for the plan page
@@ -550,7 +570,7 @@ async function handleGenerateCode(id) {
 }
 
 // render code options
-async function renderGeneratedCode(codeFiles) {
+async function renderGeneratedCode(codeFiles, saved=false) {
     function openCodeDiff(filename, generatedCode) {
         console.log('message sent');
         vscode.postMessage({
@@ -559,7 +579,12 @@ async function renderGeneratedCode(codeFiles) {
             generatedCode
         });
     }
+
     const codeContainer = document.getElementById("code");
+    if (saved) {
+        codeContainer.classList.toggle('active');
+        document.getElementById("codedown").classList.toggle("active");;
+    }
     if (!codeContainer) return;
     codeContainer.innerHTML = "";
 
@@ -576,11 +601,11 @@ async function renderGeneratedCode(codeFiles) {
             <div class="details">
                 <div class="details-unique">
                     <div class="header-unique">
-                        <div class="title-row-statusbtn ${status.toLowerCase()}">${status}</div>
-                        <span class="file-name-unique">${filename}</span>
                         <div class="modify-badge-unique">
-                            <img class="language-icon" src=${getLanguageIcon(filename)} alt="</>" style="width: 22px; height: 22px;">
+                            <img class="language-icon" src=${getLanguageIcon(filename)} alt="</>" style="width: 40px; height: 40px;">
                         </div>
+                        <span class="file-name-unique">${filename}</span>
+                        <div class="title-row-statusbtn ${status.toLowerCase()}">${status}</div>
                     </div>
                     <div class="description-unique">${purpose}</div>
                 </div>
@@ -829,7 +854,7 @@ function handleTaskClick(taskId) {
         }
 
         // Render plan specs
-        renderPlanSpecsContent(clickedTask);
+        renderPlanSpecsContent(clickedTask, JSON.parse(localStorage.getItem(clickedTask.id) || null));
         updateViewName('plan', clickedTask.title);
 
         // Update query text

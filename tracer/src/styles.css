@@ -756,10 +756,6 @@ textarea:focus-visible {
     padding-right: 12%;
     overflow: hidden;
 }
-.icon-unique {
-    color: #f6e05e;
-    font-size: 24px;
-}
 .details {
     display: flex;
     flex-direction: row;
@@ -777,15 +773,22 @@ textarea:focus-visible {
 .header-unique {
     display: flex;
     align-items: center;
-    gap: 8px;
+}
+.modify-badge-unique {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 .file-name-unique {
     font-size: 16px;
     font-weight: 600;
-}
-.modify-badge-unique {
-    width: 21px;
-    height: 21px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .line-changes-unique {
     font-size: 12px;
