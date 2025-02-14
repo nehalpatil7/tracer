@@ -1,7 +1,7 @@
 # AI-Powered Code Refactorer 1.0.2
 
 ## Project Overview
-This project is an AI-powered Copilot for Code Planning and Generation, developed as part of the Traycer AI interview. It features general query support, personalized code modification plans and history of all your modifications.
+This project is an AI-powered Copilot for Code Planning and Generation, developed as a clone of Traycer AI. It features general query support, personalized code modification plans and history of all your modifications.
 
 ![Home](demo.png)
 ![History](history.png)
